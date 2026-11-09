@@ -1,0 +1,71 @@
+{
+  "name": "my first workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "35cf49ba-d54c-428d-9333-b042dcd3d17e",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "750de188-20e9-4347-ac4e-f8ca295d85dc",
+              "name": "name",
+              "value": "jon doe",
+              "type": "string"
+            },
+            {
+              "id": "d5dcca61-3a3c-4a7f-82fb-71f350d6e1e7",
+              "name": "city",
+              "value": "ohio",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "63cb3d43-3aed-4fa5-90f6-41627046b0b7",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b90a37f9-326d-408c-bd50-397b6fc68ada",
+  "meta": {
+    "instanceId": "7876bfd396e7c4acf7925ebb5d924243575982386ac90d9dc8f6bb20f26864d8"
+  },
+  "nodeGroups": [],
+  "id": "1iaZkF1ceojrsQUV",
+  "tags": []
+}
