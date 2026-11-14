@@ -1,0 +1,656 @@
+{
+  "name": "lead-list-cleaner",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        112
+      ],
+      "id": "5c40d36a-b943-4ad7-a1a7-dc99a3c77042",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA",
+          "mode": "list",
+          "cachedResultName": "Lead_List_Cleaner_Test_v1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Raw_Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        112
+      ],
+      "id": "7d37838d-3028-4299-a334-1033401531a0",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "rSK45MSALuBbnjuw",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const FREE_DOMAINS = new Set([\n  \"gmail.com\", \"yahoo.com\", \"hotmail.com\", \"outlook.com\",\n  \"icloud.com\", \"aol.com\", \"protonmail.com\", \"live.com\", \"msn.com\"\n]);\n\nconst ROLE_PREFIXES = new Set([\n  \"info\", \"sales\", \"support\", \"admin\", \"contact\", \"hello\",\n  \"office\", \"billing\", \"team\", \"careers\", \"hr\", \"marketing\", \"enquiries\"\n]);\n\nconst TITLE_MAP = {\n  \"ceo\": \"CEO\",\n  \"chief executive officer\": \"CEO\",\n  \"founder\": \"Founder\",\n  \"co-founder\": \"Co-Founder\",\n  \"cofounder\": \"Co-Founder\",\n  \"founder & ceo\": \"Founder & CEO\",\n  \"owner\": \"Founder\",\n  \"head of growth\": \"Head of Growth\",\n  \"growth lead\": \"Head of Growth\",\n  \"vp of sales\": \"VP of Sales\",\n  \"managing director\": \"Managing Director\",\n  \"director of marketing\": \"Marketing Director\"\n};\n\nfunction cleanWhitespace(val) {\n  return val ? String(val).trim().replace(/\\s+/g, \" \") : \"\";\n}\n\nfunction toTitleCase(val) {\n  const cleaned = cleanWhitespace(val);\n  return cleaned ? cleaned.toLowerCase().replace(/\\b\\w/g, c => c.toUpperCase()) : \"\";\n}\n\nfunction cleanTitle(val) {\n  const cleaned = cleanWhitespace(val);\n  if (!cleaned) return \"\";\n  const lower = cleaned.toLowerCase();\n  return TITLE_MAP[lower] || toTitleCase(cleaned);\n}\n\nfunction normaliseDomain(website, email) {\n  let raw = cleanWhitespace(website).toLowerCase();\n  if (!raw && email && email.includes(\"@\")) {\n    raw = email.split(\"@\")[1];\n  }\n  if (!raw) return \"\";\n  return raw\n    .replace(/^(https?:\\/\\/)?(www\\.)?/, \"\")\n    .split(\"/\")[0]\n    .split(\"?\")[0]\n    .split(\":\")[0]\n    .trim();\n}\n\nconst seenDomains = new Set();\nconst outputItems = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  const firstName = toTitleCase(row.first_name);\n  const lastName = toTitleCase(row.last_name);\n  const email = cleanWhitespace(row.email).toLowerCase().replace(/\\s+/g, \"\");\n  const title = cleanTitle(row.title);\n  const company = toTitleCase(row.company);\n  const cleanDom = normaliseDomain(row.website, email);\n\n  const reasons = [];\n  let flagFree = false, flagRole = false, flagMissingTitle = false, flagDuplicate = false;\n\n  if (!email || !email.includes(\"@\") || !email.split(\"@\")[1].includes(\".\")) {\n    reasons.push(\"Missing or invalid email\");\n  } else {\n    const [prefix, emailDomain] = email.split(\"@\");\n    const basePrefix = prefix.split(\"+\")[0];\n    if (FREE_DOMAINS.has(emailDomain)) {\n      flagFree = true;\n      reasons.push(`Free email provider (${emailDomain})`);\n    }\n    if (ROLE_PREFIXES.has(basePrefix)) {\n      flagRole = true;\n      reasons.push(`Role-based email (${basePrefix}@)`);\n    }\n  }\n\n  if (!title) {\n    flagMissingTitle = true;\n    reasons.push(\"Missing job title\");\n  }\n\n  if (!cleanDom || !cleanDom.includes(\".\")) {\n    reasons.push(\"Missing or invalid company domain\");\n  } else if (!FREE_DOMAINS.has(cleanDom)) {\n    if (seenDomains.has(cleanDom)) {\n      flagDuplicate = true;\n      reasons.push(`Duplicate company domain (${cleanDom})`);\n    } else {\n      seenDomains.add(cleanDom);\n    }\n  }\n\n  outputItems.push({\n    json: {\n      first_name: firstName,\n      last_name: lastName,\n      email: email,\n      clean_domain: cleanDom,\n      title: title,\n      company: company,\n      status: reasons.length === 0 ? \"clean\" : \"issue\",\n      issue_reason: reasons.join(\"; \"),\n      _is_duplicate: flagDuplicate,\n      _is_free: flagFree,\n      _is_role: flagRole,\n      _is_missing_title: flagMissingTitle\n    }\n  });\n}\n\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        112
+      ],
+      "id": "b5f4a605-53d4-45b6-aeda-609b697c36cc",
+      "name": "Clean, Flag & Dedupe"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "cf83e6d4-5d0c-4c32-b1ca-f05e7ff086b6",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "clean",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        672,
+        16
+      ],
+      "id": "b9b88fb0-7c36-4642-a84f-7d07edc5d25b",
+      "name": "Route: Clean vs Issue"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA",
+          "mode": "list",
+          "cachedResultName": "Lead_List_Cleaner_Test_v1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2034326591,
+          "mode": "list",
+          "cachedResultName": "Issues",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit#gid=2034326591"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "first_name": "={{ $json.first_name }}",
+            "last_name": "={{ $json.last_name }}",
+            "email": "={{ $json.email }}",
+            "clean_domain": "={{ $json.clean_domain }}",
+            "title": "={{ $json.title }}",
+            "company": "={{ $json.company }}",
+            "issue_reason": "={{ $json.issue_reason }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "first_name",
+              "displayName": "first_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_name",
+              "displayName": "last_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "clean_domain",
+              "displayName": "clean_domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issue_reason",
+              "displayName": "issue_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        112
+      ],
+      "id": "c897ac53-1192-44ce-ac01-b5f6bb945dae",
+      "name": "Sheets: Write Issues Report",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "rSK45MSALuBbnjuw",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA",
+          "mode": "list",
+          "cachedResultName": "Lead_List_Cleaner_Test_v1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1252555573,
+          "mode": "list",
+          "cachedResultName": "Cleaned",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit#gid=1252555573"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "first_name": "={{ $json.first_name }}",
+            "last_name": "={{ $json.last_name }}",
+            "email": "={{ $json.email }}",
+            "clean_domain": "={{ $json.clean_domain }}",
+            "title": "={{ $json.title }}",
+            "company": "={{ $json.company }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "first_name",
+              "displayName": "first_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_name",
+              "displayName": "last_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "clean_domain",
+              "displayName": "clean_domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        -80
+      ],
+      "id": "2a13a27b-71ed-44e7-acee-1d61956d01b4",
+      "name": "Sheets: Write Cleaned Rows",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "rSK45MSALuBbnjuw",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst totalRows = items.length;\nlet cleanRows = 0, duplicatesRemoved = 0, freeEmails = 0, roleEmails = 0, missingTitles = 0;\n\nfor (const item of items) {\n  const r = item.json;\n  if (r.status === \"clean\") cleanRows++;\n  if (r._is_duplicate) duplicatesRemoved++;\n  if (r._is_free) freeEmails++;\n  if (r._is_role) roleEmails++;\n  if (r._is_missing_title) missingTitles++;\n}\n\nconst issuesFlagged = totalRows - cleanRows;\nconst percentClean = totalRows > 0 ? ((cleanRows / totalRows) * 100).toFixed(1) : \"0.0\";\n\nreturn [{\n  json: {\n    run_timestamp: new Date().toISOString().slice(0, 16).replace(\"T\", \" \") + \" UTC\",\n    total_rows: totalRows,\n    clean_rows: cleanRows,\n    issues_flagged: issuesFlagged,\n    duplicates_removed: duplicatesRemoved,\n    free_emails: freeEmails,\n    role_emails: roleEmails,\n    missing_titles: missingTitles,\n    percent_clean: `${percentClean}%`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        304
+      ],
+      "id": "17564b31-c409-4719-a2eb-b8dba5cfe4e5",
+      "name": "JS: Build Summary Metrics"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA",
+          "mode": "list",
+          "cachedResultName": "Lead_List_Cleaner_Test_v1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1274344279,
+          "mode": "list",
+          "cachedResultName": "Summary",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit#gid=1274344279"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "run_timestamp": "={{ $json.run_timestamp }}",
+            "total_rows": "={{ $json.total_rows }}",
+            "clean_rows": "={{ $json.clean_rows }}",
+            "issues_flagged": "={{ $json.issues_flagged }}",
+            "duplicates_removed": "={{ $json.duplicates_removed }}",
+            "free_emails": "={{ $json.free_emails }}",
+            "role_emails": "={{ $json.role_emails }}",
+            "missing_titles": "={{ $json.missing_titles }}",
+            "percent_clean": "={{ $json.percent_clean }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "run_timestamp",
+              "displayName": "run_timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_rows",
+              "displayName": "total_rows",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "clean_rows",
+              "displayName": "clean_rows",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issues_flagged",
+              "displayName": "issues_flagged",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duplicates_removed",
+              "displayName": "duplicates_removed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "free_emails",
+              "displayName": "free_emails",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "role_emails",
+              "displayName": "role_emails",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "missing_titles",
+              "displayName": "missing_titles",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "percent_clean",
+              "displayName": "percent_clean",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        304
+      ],
+      "id": "3b066e11-57b7-4c72-a898-c69e0dccec89",
+      "name": "Sheets: Write Summary Row",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "rSK45MSALuBbnjuw",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        528
+      ],
+      "id": "1e5f021a-caed-471a-be5e-8381efc0c61c",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA",
+          "mode": "list",
+          "cachedResultName": "Lead_List_Cleaner_Test_v1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1591605867,
+          "mode": "list",
+          "cachedResultName": "Error_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Hn-oLh0jSWxc0RLPdR1z1yiyOqmmjbNRP1i8jR4ijdA/edit#gid=1591605867"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $now.toISO() }}",
+            "workflow_name": "={{ $json.workflow.name }}",
+            "failed_node": "={{ $json.execution.lastNodeExecuted }}",
+            "error_message": "={{ $json.execution.error.message }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "failed_node",
+              "displayName": "failed_node",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        528
+      ],
+      "id": "6c2e91f3-9182-418a-ae1c-ec747a1b0c55",
+      "name": "Sheets: Log Failures",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "rSK45MSALuBbnjuw",
+          "name": "Google Sheets account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Clean, Flag & Dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean, Flag & Dedupe": {
+      "main": [
+        [
+          {
+            "node": "Route: Clean vs Issue",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "JS: Build Summary Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Clean vs Issue": {
+      "main": [
+        [
+          {
+            "node": "Sheets: Write Cleaned Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sheets: Write Issues Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JS: Build Summary Metrics": {
+      "main": [
+        [
+          {
+            "node": "Sheets: Write Summary Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Sheets: Log Failures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c1f9ddd2-f551-4031-aa41-f7e98be02b07",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7876bfd396e7c4acf7925ebb5d924243575982386ac90d9dc8f6bb20f26864d8"
+  },
+  "nodeGroups": [],
+  "id": "MLYDmBUma1nP7VJk",
+  "tags": []
+}
